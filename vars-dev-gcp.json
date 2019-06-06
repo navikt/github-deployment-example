@@ -1,0 +1,6 @@
+{
+  "application_name": "testapp",
+  "env": {
+    "TEST_KEY": "not_production"
+  }
+}

@@ -1,0 +1,64 @@
+# Since we want the possibility for building and testing pull requests we need to use workflows and multiple jobs.
+# To avoid copying between workspaces we've the test and build stages. This is done so we don't push every PR build to
+# the docker registry.
+version: 2
+jobs:
+  test:
+    docker:
+      - image: "circleci/openjdk:11"
+    steps:
+      - checkout
+      - run:
+          name: Verify that the application builds
+          command: ./gradlew clean shadowJar
+  build:
+    docker:
+      - image: "circleci/openjdk:11"
+    steps:
+      - checkout
+      - setup_remote_docker
+      # Since we use the docker tag in another part of the build we make sure its the same across the jobs
+      - run:
+          name: Generate version number and docker image tags
+          command: |
+            echo "export DOCKER_TAG=\"$CIRCLE_PROJECT_REPONAME/$CIRCLE_PROJECT_REPONAME:$CIRCLE_SHA1\"" >> $BASH_ENV
+      - run:
+          name: Run tests
+          command: ./gradlew test
+      - run:
+          name: Build uberjar
+          command: ./gradlew shadowJar
+      - run:
+          name: Build docker image
+          command: docker build -t $DOCKER_TAG .
+      - run:
+          # Push the image to Docker Packages, can also be used against dockerhub by omitting docker.pkg.github.com
+          name: Docker push
+          command: |
+            echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin docker.pkg.github.com
+            docker push $DOCKER_TAG
+  deploy:
+    docker:
+      - image: "navikt/deployment-cli:0.1.6"
+    steps:
+      - run:
+          name: Create github deployment for dev-fss
+          command: deployment-cli deploy create --cluster=dev-fss --repository=$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME --vars=config-dev.json --team=$TEAMNAME -r=naiserator.yaml --version=${DOCKER_TAG}
+workflows:
+  version: 2
+  build_and_release:
+    jobs:
+      - test:
+          filter:
+            branches:
+              ignore: master
+      - build:
+          filters:
+            branches:
+              only: master
+      - deploy:
+          requires:
+            - build
+          filter:
+            branches:
+              only: master

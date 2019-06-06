@@ -1,0 +1,12 @@
+# Idea project files
+*.iml
+.idea/
+
+# Gradle files
+out/
+build/
+.gradle/
+
+# OS specific
+.DS_Store
+
